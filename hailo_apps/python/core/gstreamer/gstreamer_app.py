@@ -26,7 +26,12 @@ import cv2
 import setproctitle
 
 import gi
-gi.require_version('Gtk', '3.0')
+# Gtk is optional for headless/server usage. Some minimal Raspberry Pi
+# environments ship Gst introspection without Gtk introspection.
+try:
+    gi.require_version('Gtk', '3.0')
+except ValueError:
+    pass
 gi.require_version("Gst", "1.0")
 from gi.repository import GLib, Gst
 
