@@ -59,6 +59,10 @@ from hailo_apps.python.core.common.hailo_logger import get_logger, init_logging,
 # python/core/gstreamer/gstreamer_app.py
 # Absolute import for your local helper
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
+    DISPLAY_PIPELINE,
+    OVERLAY_PIPELINE,
+    QUEUE,
+    VIDEO_STREAM_PIPELINE,
     get_source_type,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_common import (
@@ -344,6 +348,18 @@ class GStreamerApp:
             "true" if (self.source_type == "file" and not self.options_menu.disable_sync) else "false"
         )
         self.show_fps = self.options_menu.show_fps
+        self.stream_output = getattr(self.options_menu, "stream_output", False)
+        self.stream_host = getattr(self.options_menu, "stream_host", "127.0.0.1")
+        self.stream_port = getattr(self.options_menu, "stream_port", 5004)
+        self.stream_bitrate = getattr(self.options_menu, "stream_bitrate", 2048)
+
+        if self.stream_output:
+            hailo_logger.info(
+                "UDP streaming enabled: host=%s port=%s bitrate=%skbps",
+                self.stream_host,
+                self.stream_port,
+                self.stream_bitrate,
+            )
 
         if self.options_menu.dump_dot:
             hailo_logger.debug("Dump DOT enabled")
@@ -656,6 +672,45 @@ class GStreamerApp:
     def get_pipeline_string(self):
         hailo_logger.debug("get_pipeline_string() called (should be overridden)")
         return ""
+
+    def get_output_pipeline(
+        self,
+        name="hailo_display",
+        include_overlay=True,
+        show_fps=None,
+        stream_index=0,
+    ):
+        """
+        Build the app output branch.
+
+        Returns a local display sink by default, or an RTP/H264 UDP sink when
+        --stream-output is enabled.
+        """
+        if show_fps is None:
+            show_fps = self.show_fps
+
+        if not self.stream_output:
+            return DISPLAY_PIPELINE(
+                video_sink=self.video_sink,
+                sync=self.sync,
+                show_fps=show_fps,
+                name=name,
+            )
+
+        port = self.stream_port + int(stream_index)
+        hailo_logger.info(
+            "Streaming output '%s' to udp://%s:%d",
+            name,
+            self.stream_host,
+            port,
+        )
+        stream_pipeline = (
+            f"{QUEUE(name=f'{name}_stream_q')} ! "
+            f"{VIDEO_STREAM_PIPELINE(port=port, host=self.stream_host, bitrate=self.stream_bitrate)}"
+        )
+        if include_overlay:
+            return f"{OVERLAY_PIPELINE(name=f'{name}_overlay')} ! {stream_pipeline}"
+        return stream_pipeline
 
     def dump_dot_file(self):
         hailo_logger.info("Dumping GStreamer dot file")

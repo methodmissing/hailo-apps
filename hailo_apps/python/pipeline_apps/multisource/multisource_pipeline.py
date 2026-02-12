@@ -13,7 +13,7 @@ from gi.repository import Gst
 import hailo
 from hailo_apps.python.core.common.core import get_pipeline_parser, get_resource_path, handle_list_models_flag, resolve_hef_path
 from hailo_apps.python.core.common.defines import TAPPAS_STREAM_ID_TOOL_SO_FILENAME, MULTI_SOURCE_APP_TITLE, SIMPLE_DETECTION_PIPELINE, DETECTION_PIPELINE, RESOURCES_SO_DIR_NAME, DETECTION_POSTPROCESS_SO_FILENAME, DETECTION_POSTPROCESS_FUNCTION, TAPPAS_POSTPROC_PATH_KEY
-from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import get_source_type, USER_CALLBACK_PIPELINE, TRACKER_PIPELINE, QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, DISPLAY_PIPELINE
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import get_source_type, USER_CALLBACK_PIPELINE, TRACKER_PIPELINE, QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.common.hailo_logger import get_logger
 
@@ -59,7 +59,7 @@ class GStreamerMultisourceApp(GStreamerApp):
                                               frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}", no_webcam_compression=False)
             sources_string += f"! hailofilter name=set_src_{id} so-path={set_stream_id_so} config-path=src_{id} "
             sources_string += f"! {QUEUE(name=f'src_q_{id}', max_size_buffers=30)} ! robin.sink_{id} "
-            router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}', max_size_buffers=30)} ! {DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps, name=f'hailo_display_{id}')} "
+            router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}', max_size_buffers=30)} ! {self.get_output_pipeline(name=f'hailo_display_{id}', stream_index=id)} "
 
         self.thresholds_str = (
             f"nms-score-threshold=0.3 "

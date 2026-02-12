@@ -121,7 +121,7 @@ def SOURCE_PIPELINE(
     elif source_type == "libcamera":
         source_element = (
             f"libcamerasrc name={name} ! "
-            f"video/x-raw, format={video_format}, width=1536, height=864 ! "
+            f"video/x-raw, format={video_format}, width={video_width}, height={video_height} ! "
         )
     elif source_type == "ximage":
         source_element = (

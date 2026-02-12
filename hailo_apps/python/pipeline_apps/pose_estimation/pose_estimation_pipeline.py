@@ -23,7 +23,6 @@ from hailo_apps.python.core.gstreamer.gstreamer_app import (
     dummy_callback,
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
-    DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
     SOURCE_PIPELINE,
@@ -106,9 +105,7 @@ class GStreamerPoseEstimationApp(GStreamerApp):
         infer_pipeline_wrapper = INFERENCE_PIPELINE_WRAPPER(infer_pipeline)
         tracker_pipeline = TRACKER_PIPELINE(class_id=0)
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
-        display_pipeline = DISPLAY_PIPELINE(
-            video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps
-        )
+        display_pipeline = self.get_output_pipeline()
 
         pipeline_string = (
             f"{source_pipeline} ! "

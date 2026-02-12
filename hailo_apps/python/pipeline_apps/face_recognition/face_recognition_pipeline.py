@@ -55,7 +55,7 @@ from hailo_apps.python.core.common.defines import (
     HAILO10H_ARCH,
     HAILO8L_ARCH
 )
-from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, INFERENCE_PIPELINE_WRAPPER, TRACKER_PIPELINE, USER_CALLBACK_PIPELINE, DISPLAY_PIPELINE, CROPPER_PIPELINE
+from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import QUEUE, SOURCE_PIPELINE, INFERENCE_PIPELINE, INFERENCE_PIPELINE_WRAPPER, TRACKER_PIPELINE, USER_CALLBACK_PIPELINE, CROPPER_PIPELINE
 from hailo_apps.python.core.common.hailo_logger import get_logger
 
 hailo_logger = get_logger(__name__)
@@ -203,13 +203,13 @@ class GStreamerFaceRecognitionApp(GStreamerApp):
                                             so_path=self.post_process_so_cropper, function_name=self.cropper_func, internal_offset=True)
         vector_db_callback_pipeline = USER_CALLBACK_PIPELINE(name=self.vector_db_callback_name)  # 'identity name' - is a GStreamer element that does nothing, but allows to add a probe to it
         user_callback_pipeline = USER_CALLBACK_PIPELINE()
-        display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps)
+        display_pipeline = self.get_output_pipeline()
 
         if self.options_menu.mode == 'train':
             source_pipeline = (f"multifilesrc location={self.current_file} loop=true num-buffers=30 ! "  # each image 30 times
                                f"decodebin ! videoconvert n-threads=4 qos=false ! video/x-raw, format=RGB, pixel-aspect-ratio=1/1 ")
             vector_db_callback_pipeline = USER_CALLBACK_PIPELINE(name=self.train_vector_db_callback_name)
-            display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps)
+            display_pipeline = self.get_output_pipeline()
 
         return (
             f'{source_pipeline} ! '

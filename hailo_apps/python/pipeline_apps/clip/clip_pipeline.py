@@ -39,7 +39,6 @@ from hailo_apps.python.core.common.hef_utils import get_hef_labels_json
 from hailo_apps.python.core.gstreamer.gstreamer_app import GStreamerApp, app_callback_class, dummy_callback
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     CROPPER_PIPELINE,
-    DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
     QUEUE,
@@ -200,7 +199,7 @@ class GStreamerClipApp(GStreamerApp):
             clip_t. ! {QUEUE(name="clip_muxer_queue")} ! videoscale qos=false ! {clip_pipeline} ! clip_hmux.sink_1 \
             clip_hmux. ! {QUEUE(name="clip_hmux_queue")} '
 
-        display_pipeline = DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps='True')
+        display_pipeline = self.get_output_pipeline(show_fps="True")
 
         matching_callback_pipeline = USER_CALLBACK_PIPELINE(name=self.matching_callback_name)
 

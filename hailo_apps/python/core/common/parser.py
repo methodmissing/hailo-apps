@@ -175,6 +175,45 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--stream-output",
+        action="store_true",
+        help=(
+            "Stream processed output over UDP instead of rendering locally. "
+            "When enabled, the display sink is replaced by RTP/H.264 UDP output."
+        ),
+    )
+
+    parser.add_argument(
+        "--stream-host",
+        type=str,
+        default="127.0.0.1",
+        help=(
+            "Destination host/IP for UDP streaming when --stream-output is enabled. "
+            "Use your receiver machine IP (for example, your MacBook IP)."
+        ),
+    )
+
+    parser.add_argument(
+        "--stream-port",
+        type=int,
+        default=5004,
+        help=(
+            "Base UDP destination port for streaming when --stream-output is enabled. "
+            "For multi-stream apps, source index is added to this base port."
+        ),
+    )
+
+    parser.add_argument(
+        "--stream-bitrate",
+        type=int,
+        default=2048,
+        help=(
+            "Target H.264 encoder bitrate in kbps for UDP streaming. "
+            "Higher values increase quality and bandwidth usage."
+        ),
+    )
+
+    parser.add_argument(
         "--width",
         "-W",
         type=int,

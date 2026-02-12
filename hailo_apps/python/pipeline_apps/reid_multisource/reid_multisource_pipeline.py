@@ -57,7 +57,6 @@ from hailo_apps.python.core.common.defines import (
 )
 from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     CROPPER_PIPELINE,
-    DISPLAY_PIPELINE,
     INFERENCE_PIPELINE,
     INFERENCE_PIPELINE_WRAPPER,
     QUEUE,
@@ -177,7 +176,7 @@ class GStreamerREIDMultisourceApp(GStreamerApp):
                                               frame_rate=self.frame_rate, sync=self.sync, name=f"source_{id}", no_webcam_compression=True)
             sources_string += f"! hailofilter name=set_src_{id} so-path={set_stream_id_so} config-path='src_{id}' "
             sources_string += f"! robin.sink_{id} "
-            router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}')} ! {DISPLAY_PIPELINE(video_sink=self.video_sink, sync=self.sync, show_fps=self.show_fps, name=f'hailo_display_{id}')} "
+            router_string += f"router.src_{id} ! {USER_CALLBACK_PIPELINE(name=f'src_{id}_callback')} ! {QUEUE(name=f'callback_q_{id}')} ! {self.get_output_pipeline(name=f'hailo_display_{id}', stream_index=id)} "
 
         detection_pipeline = INFERENCE_PIPELINE(hef_path=self.hef_path_scrfd_detection, post_process_so=self.post_process_so_scrfd_detection, post_function_name=self.post_function_scrfd_detection, batch_size=self.batch_size, config_json=get_resource_path(pipeline_name=None, resource_type=RESOURCES_JSON_DIR_NAME, arch=self.arch, model=FACE_DETECTION_JSON_NAME))
         tracker_pipeline = TRACKER_PIPELINE(class_id=-1, name='hailo_face_tracker')
