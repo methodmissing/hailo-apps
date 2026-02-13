@@ -178,8 +178,21 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
         "--stream-output",
         action="store_true",
         help=(
-            "Stream processed output over UDP instead of rendering locally. "
-            "When enabled, the display sink is replaced by RTP/H.264 UDP output."
+            "Stream processed output instead of rendering locally. "
+            "Use --stream-protocol to choose UDP or RTSP push mode."
+        ),
+    )
+
+    parser.add_argument(
+        "--stream-protocol",
+        type=str,
+        choices=["udp", "rtsp", "rtsp-server"],
+        default="udp",
+        help=(
+            "Streaming protocol to use when --stream-output is enabled. "
+            "'udp' sends RTP/H264 over UDP, "
+            "'rtsp' pushes H264 to an RTSP server, "
+            "'rtsp-server' hosts an in-process RTSP server."
         ),
     )
 
@@ -188,8 +201,8 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
         type=str,
         default="127.0.0.1",
         help=(
-            "Destination host/IP for UDP streaming when --stream-output is enabled. "
-            "Use your receiver machine IP (for example, your MacBook IP)."
+            "Destination host/IP for stream output when --stream-output is enabled."
+            " For 'rtsp-server', this is the bind address (use 0.0.0.0 for LAN access)."
         ),
     )
 
@@ -198,8 +211,8 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
         type=int,
         default=5004,
         help=(
-            "Base UDP destination port for streaming when --stream-output is enabled. "
-            "For multi-stream apps, source index is added to this base port."
+            "Destination port for stream output. "
+            "Typical values: UDP=5004, RTSP/RTSP-server=8554."
         ),
     )
 
@@ -208,8 +221,18 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
         type=int,
         default=2048,
         help=(
-            "Target H.264 encoder bitrate in kbps for UDP streaming. "
+            "Target H.264 encoder bitrate in kbps for stream output. "
             "Higher values increase quality and bandwidth usage."
+        ),
+    )
+
+    parser.add_argument(
+        "--stream-path",
+        type=str,
+        default="/hailo",
+        help=(
+            "RTSP path when --stream-protocol rtsp or rtsp-server is used "
+            "(for example, /hailo or /live/cam)."
         ),
     )
 

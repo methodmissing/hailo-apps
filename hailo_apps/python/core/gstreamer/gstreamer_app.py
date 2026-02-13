@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import queue
+import tempfile
 import signal
 import sys
 import threading
@@ -33,6 +34,11 @@ try:
 except ValueError:
     pass
 gi.require_version("Gst", "1.0")
+try:
+    gi.require_version("GstRtspServer", "1.0")
+    from gi.repository import GstRtspServer
+except ValueError:
+    GstRtspServer = None
 from gi.repository import GLib, Gst
 
 from hailo_apps.python.core.common.buffer_utils import (
@@ -67,6 +73,8 @@ from hailo_apps.python.core.gstreamer.gstreamer_helper_pipelines import (
     DISPLAY_PIPELINE,
     OVERLAY_PIPELINE,
     QUEUE,
+    RTSP_STREAM_PIPELINE,
+    VIDEO_SHMSINK_PIPELINE,
     VIDEO_STREAM_PIPELINE,
     get_source_type,
 )
@@ -86,7 +94,7 @@ hailo_logger = get_logger(__name__)
 try:
     from picamera2 import Picamera2
 except ImportError:
-    pass
+    Picamera2 = None
 
 # -----------------------------------------------------------------------------------------------
 # User-defined class to be used in the callback function
@@ -320,6 +328,17 @@ class GStreamerApp:
 
         self.source_type = get_source_type(self.video_source)
         hailo_logger.debug(f"Source type determined: {self.source_type}")
+        if self.source_type == RPI_NAME_I and Picamera2 is None:
+            hailo_logger.error(
+                "Input source 'rpi' requires Picamera2, but it is not installed in this environment."
+            )
+            print(
+                "ERROR: --input rpi requires Picamera2. "
+                "Install it (for example, python3-picamera2 on Raspberry Pi OS) "
+                "or use --input libcamera.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         self.frame_rate = self.options_menu.frame_rate
         self.user_data = user_data
@@ -354,17 +373,62 @@ class GStreamerApp:
         )
         self.show_fps = self.options_menu.show_fps
         self.stream_output = getattr(self.options_menu, "stream_output", False)
+        self.stream_protocol = getattr(self.options_menu, "stream_protocol", "udp")
         self.stream_host = getattr(self.options_menu, "stream_host", "127.0.0.1")
         self.stream_port = getattr(self.options_menu, "stream_port", 5004)
         self.stream_bitrate = getattr(self.options_menu, "stream_bitrate", 2048)
+        self.stream_path = getattr(self.options_menu, "stream_path", "/hailo")
+        self.rtsp_server = None
+        self.rtsp_mounts = None
+        self.rtsp_registered_streams = {}
+        self.rtsp_shm_paths = {}
 
         if self.stream_output:
-            hailo_logger.info(
-                "UDP streaming enabled: host=%s port=%s bitrate=%skbps",
-                self.stream_host,
-                self.stream_port,
-                self.stream_bitrate,
-            )
+            if self.stream_protocol == "rtsp-server":
+                if GstRtspServer is None:
+                    hailo_logger.error(
+                        "RTSP server mode requested, but GstRtspServer bindings are not available."
+                    )
+                    print(
+                        "ERROR: --stream-protocol rtsp-server requires GstRtspServer.\n"
+                        "Install gstreamer RTSP server bindings (for example: gir1.2-gst-rtsp-server-1.0).",
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                if self.stream_host == "127.0.0.1":
+                    self.stream_host = "0.0.0.0"
+                normalized_path = (
+                    self.stream_path
+                    if str(self.stream_path).startswith("/")
+                    else f"/{self.stream_path}"
+                )
+                hailo_logger.info(
+                    "In-process RTSP server mode enabled: rtsp://%s:%s%s bitrate=%skbps",
+                    self.stream_host,
+                    self.stream_port,
+                    normalized_path,
+                    self.stream_bitrate,
+                )
+            elif self.stream_protocol == "rtsp":
+                normalized_path = (
+                    self.stream_path
+                    if str(self.stream_path).startswith("/")
+                    else f"/{self.stream_path}"
+                )
+                hailo_logger.info(
+                    "RTSP push enabled: rtsp://%s:%s%s bitrate=%skbps",
+                    self.stream_host,
+                    self.stream_port,
+                    normalized_path,
+                    self.stream_bitrate,
+                )
+            else:
+                hailo_logger.info(
+                    "UDP streaming enabled: host=%s port=%s bitrate=%skbps",
+                    self.stream_host,
+                    self.stream_port,
+                    self.stream_bitrate,
+                )
 
         if self.options_menu.dump_dot:
             hailo_logger.debug("Dump DOT enabled")
@@ -481,7 +545,8 @@ class GStreamerApp:
                         hailo_logger.debug(f"Connected FPS measurement to hailo_display_{i}")
                         break
                 else:
-                    hailo_logger.warning("hailo_display not found - FPS measurement disabled")
+                    if not self.stream_output:
+                        hailo_logger.warning("hailo_display not found - FPS measurement disabled")
 
         self.loop = GLib.MainLoop()
 
@@ -647,6 +712,16 @@ class GStreamerApp:
         GLib.usleep(100000)
 
         self.pipeline.set_state(Gst.State.NULL)
+
+        # Cleanup SHM sockets used by in-process RTSP server mode.
+        if self.rtsp_shm_paths:
+            for socket_path in self.rtsp_shm_paths.values():
+                try:
+                    if os.path.exists(socket_path):
+                        os.remove(socket_path)
+                except OSError:
+                    hailo_logger.warning("Failed to remove RTSP SHM socket: %s", socket_path)
+
         GLib.idle_add(self.loop.quit)
 
     def update_fps_caps(self, new_fps=30, source_name="source"):
@@ -678,6 +753,59 @@ class GStreamerApp:
         hailo_logger.debug("get_pipeline_string() called (should be overridden)")
         return ""
 
+    def _normalize_stream_path(self) -> str:
+        return self.stream_path if str(self.stream_path).startswith("/") else f"/{self.stream_path}"
+
+    def _ensure_rtsp_server(self):
+        if self.rtsp_server is not None:
+            return
+        self.rtsp_server = GstRtspServer.RTSPServer()
+        self.rtsp_server.set_address(self.stream_host)
+        self.rtsp_server.set_service(str(self.stream_port))
+        self.rtsp_mounts = self.rtsp_server.get_mount_points()
+        self.rtsp_server.attach(None)
+
+    def _get_rtsp_mount_path(self, stream_index=0) -> str:
+        base = self._normalize_stream_path().rstrip("/")
+        if stream_index == 0:
+            return base
+        return f"{base}_{stream_index}"
+
+    def _ensure_rtsp_stream_mount(self, stream_index=0):
+        if stream_index in self.rtsp_registered_streams:
+            return self.rtsp_registered_streams[stream_index]
+
+        self._ensure_rtsp_server()
+        mount_path = self._get_rtsp_mount_path(stream_index=stream_index)
+        socket_name = f"hailo_rtsp_{os.getpid()}_{stream_index}.sock"
+        socket_path = os.path.join(tempfile.gettempdir(), socket_name)
+        if os.path.exists(socket_path):
+            try:
+                os.remove(socket_path)
+            except OSError:
+                pass
+
+        factory = GstRtspServer.RTSPMediaFactory()
+        factory.set_shared(True)
+        factory.set_launch(
+            f"( shmsrc socket-path={socket_path} is-live=true do-timestamp=true ! "
+            f"video/x-raw,format=RGB,width={self.video_width},height={self.video_height},framerate={self.frame_rate}/1 ! "
+            f"videoconvert ! x264enc tune=zerolatency bitrate={self.stream_bitrate} speed-preset=ultrafast ! "
+            f"video/x-h264,profile=baseline ! h264parse config-interval=1 ! "
+            f"rtph264pay name=pay0 pt=96 config-interval=1 )"
+        )
+        self.rtsp_mounts.add_factory(mount_path, factory)
+        self.rtsp_registered_streams[stream_index] = mount_path
+        self.rtsp_shm_paths[stream_index] = socket_path
+        hailo_logger.info(
+            "RTSP server stream ready at rtsp://%s:%s%s (shm: %s)",
+            self.stream_host,
+            self.stream_port,
+            mount_path,
+            socket_path,
+        )
+        return mount_path
+
     def get_output_pipeline(
         self,
         name="hailo_display",
@@ -703,16 +831,47 @@ class GStreamerApp:
             )
 
         port = self.stream_port + int(stream_index)
-        hailo_logger.info(
-            "Streaming output '%s' to udp://%s:%d",
-            name,
-            self.stream_host,
-            port,
-        )
-        stream_pipeline = (
-            f"{QUEUE(name=f'{name}_stream_q')} ! "
-            f"{VIDEO_STREAM_PIPELINE(port=port, host=self.stream_host, bitrate=self.stream_bitrate)}"
-        )
+        if self.stream_protocol == "rtsp-server":
+            mount_path = self._ensure_rtsp_stream_mount(stream_index=stream_index)
+            socket_path = self.rtsp_shm_paths[stream_index]
+            hailo_logger.info(
+                "Streaming output '%s' to local RTSP mount %s",
+                name,
+                mount_path,
+            )
+            stream_pipeline = (
+                f"{QUEUE(name=f'{name}_stream_q')} ! "
+                f"{VIDEO_SHMSINK_PIPELINE(socket_path=socket_path, width=self.video_width, height=self.video_height, framerate=self.frame_rate, video_format='RGB')}"
+            )
+        elif self.stream_protocol == "rtsp":
+            normalized_path = (
+                self.stream_path
+                if str(self.stream_path).startswith("/")
+                else f"/{self.stream_path}"
+            )
+            hailo_logger.info(
+                "Streaming output '%s' to rtsp://%s:%d%s",
+                name,
+                self.stream_host,
+                port,
+                normalized_path,
+            )
+            stream_pipeline = (
+                f"{QUEUE(name=f'{name}_stream_q')} ! "
+                f"{RTSP_STREAM_PIPELINE(host=self.stream_host, port=port, path=self.stream_path, bitrate=self.stream_bitrate)}"
+            )
+        else:
+            hailo_logger.info(
+                "Streaming output '%s' to udp://%s:%d",
+                name,
+                self.stream_host,
+                port,
+            )
+            stream_pipeline = (
+                f"{QUEUE(name=f'{name}_stream_q')} ! "
+                f"{VIDEO_STREAM_PIPELINE(port=port, host=self.stream_host, bitrate=self.stream_bitrate)}"
+            )
+
         if include_overlay:
             return f"{OVERLAY_PIPELINE(name=f'{name}_overlay')} ! {stream_pipeline}"
         return stream_pipeline
@@ -731,7 +890,7 @@ class GStreamerApp:
         self._connect_callback()
 
         hailo_display = self.pipeline.get_by_name("hailo_display")
-        if hailo_display is None and not getattr(self.options_menu, "ui", False):
+        if hailo_display is None and not getattr(self.options_menu, "ui", False) and not self.stream_output:
             hailo_logger.warning("hailo_display not found in pipeline")
 
         disable_qos(self.pipeline)

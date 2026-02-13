@@ -561,7 +561,30 @@ def VIDEO_STREAM_PIPELINE(port=5004, host="127.0.0.1", bitrate=2048):
     )
 
 
-def VIDEO_SHMSINK_PIPELINE(socket_path=None):
+def RTSP_STREAM_PIPELINE(host="127.0.0.1", port=8554, path="/hailo", bitrate=2048):
+    """Creates a GStreamer pipeline string for pushing H264 to an RTSP server.
+
+    Note:
+        This mode uses rtspclientsink and expects an external RTSP server endpoint
+        (for example: rtsp://host:8554/hailo) to be available.
+    """
+    encoder = f"x264enc tune=zerolatency bitrate={bitrate} speed-preset=ultrafast"
+    normalized_path = path if str(path).startswith("/") else f"/{path}"
+    location = f"rtsp://{host}:{port}{normalized_path}"
+    return (
+        f"videoconvert ! video/x-raw,format=I420 ! "
+        f"{encoder} ! video/x-h264,profile=baseline ! h264parse config-interval=1 ! "
+        f"rtspclientsink location={location} protocols=tcp"
+    )
+
+
+def VIDEO_SHMSINK_PIPELINE(
+    socket_path=None,
+    width=640,
+    height=480,
+    framerate=30,
+    video_format="RGB",
+):
     """Creates a GStreamer pipeline string portion for shared memory video transfer using the shm plugins.
     Shmsink creates a shared memory segment and socket.
 
@@ -571,7 +594,11 @@ def VIDEO_SHMSINK_PIPELINE(socket_path=None):
     Returns:
         str: GStreamer pipeline string fragment.
     """
-    return f"videoconvert ! video/x-raw,format=RGB,width=640,height=480,framerate=30/1 ! shmsink socket-path={socket_path}"
+    return (
+        f"videoconvert ! "
+        f"video/x-raw,format={video_format},width={width},height={height},framerate={framerate}/1 ! "
+        f"shmsink socket-path={socket_path} wait-for-connection=false sync=false async=false"
+    )
 
 
 def VIDEO_SHMSRC_PIPELINE(socket_path=None):
