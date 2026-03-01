@@ -379,6 +379,7 @@ class GStreamerApp:
         )
         self.show_fps = self.options_menu.show_fps
         self.stream_output = getattr(self.options_menu, "stream_output", False)
+        self.wifilink_hw_decode = getattr(self.options_menu, "wifilink_hw_decode", False)
         self.stream_protocol = getattr(self.options_menu, "stream_protocol", "udp")
         self.stream_host = getattr(self.options_menu, "stream_host", "127.0.0.1")
         self.stream_port = getattr(self.options_menu, "stream_port", 5004)
@@ -435,6 +436,9 @@ class GStreamerApp:
                     self.stream_port,
                     self.stream_bitrate,
                 )
+
+        # SOURCE_PIPELINE uses this toggle for wifilink:// decode path selection.
+        os.environ["HAILO_WIFILINK_HW_DECODE"] = "1" if self.wifilink_hw_decode else "0"
 
         if self.options_menu.dump_dot:
             hailo_logger.debug("Dump DOT enabled")

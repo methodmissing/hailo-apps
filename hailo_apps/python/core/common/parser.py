@@ -176,6 +176,15 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--wifilink-hw-decode",
+        action="store_true",
+        help=(
+            "Enable hardware H.265 decode for wifilink:// inputs. "
+            "Disabled by default for better compatibility; enable this to reduce CPU usage when your platform supports it."
+        ),
+    )
+
+    parser.add_argument(
         "--stream-output",
         action="store_true",
         help=(

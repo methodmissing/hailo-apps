@@ -155,14 +155,15 @@ def SOURCE_PIPELINE(
         parsed_wifilink_uri = urlparse(video_source)
         wifilink_host = parsed_wifilink_uri.hostname or "0.0.0.0"
         wifilink_port = parsed_wifilink_uri.port or 5600
+        use_hw_decode = os.getenv("HAILO_WIFILINK_HW_DECODE", "0") == "1"
+        decoder_element = "v4l2slh265dec" if use_hw_decode else "avdec_h265"
         source_element = (
             f"udpsrc address={wifilink_host} port={wifilink_port} name={name}_wifilink_src "
             f'caps="application/x-rtp,media=video,encoding-name=H265,clock-rate=90000" ! '
             f"{QUEUE(name=f'{name}_queue_jitter')} ! "
             f"rtpjitterbuffer latency=100 ! "
             f"{QUEUE(name=f'{name}_queue_depay')} ! "
-            f"rtph265depay ! h265parse ! "
-            f'decodebin name={name}_decodebin ! '
+            f"rtph265depay ! h265parse ! {decoder_element} ! "
         )
     else:
         source_element = (
