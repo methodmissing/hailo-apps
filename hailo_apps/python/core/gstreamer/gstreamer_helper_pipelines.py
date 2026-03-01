@@ -17,7 +17,7 @@ from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 def get_source_type(input_source):
     # This function will return the source type based on the input source
-    # return values can be "file", "mipi" or "usb"
+    # return values can be "file", "mipi", "usb", "rtsp", "udp"
     input_source = str(input_source)
     if input_source.startswith("/dev/video"):
         return "usb"
@@ -29,6 +29,8 @@ def get_source_type(input_source):
         return "ximage"
     elif input_source.startswith('rtsp://'):
         return 'rtsp'
+    elif input_source.startswith("udp://"):
+        return "udp"
     else:
         return "file"
 
@@ -132,6 +134,10 @@ def SOURCE_PIPELINE(
             f'rtspsrc location="{video_source}" name={name} ! '
             f'{QUEUE(name=f"{name}_queue_decode")} ! '
             f'decodebin name={name}_decodebin ! '
+        )
+    elif source_type == "udp":  # UDP URI stream handling
+        source_element = (
+            f'uridecodebin uri="{video_source}" name={name}_uridecodebin ! '
         )
     else:
         source_element = (
