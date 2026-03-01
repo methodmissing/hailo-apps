@@ -38,7 +38,8 @@ def get_base_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Input source for processing. Can be a file path (image or video), "
-            "camera index (integer), folder path containing images, RTSP URL, or UDP URI. "
+            "camera index (integer), folder path containing images, RTSP URL, UDP URI, "
+            "or WiFiLink URI (wifilink://host:port). "
             "For USB cameras, use 'usb' to auto-detect or '/dev/video<X>' for a specific device. "
             "For Raspberry Pi camera, use 'rpi'. If not specified, defaults to application-specific source."
         ),

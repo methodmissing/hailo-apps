@@ -328,6 +328,12 @@ class GStreamerApp:
 
         self.source_type = get_source_type(self.video_source)
         hailo_logger.debug(f"Source type determined: {self.source_type}")
+        if self.source_type in ("udp", "wifilink"):
+            hailo_logger.info(
+                "UDP-based input detected (%s): %s",
+                self.source_type,
+                self.video_source,
+            )
         if self.source_type == RPI_NAME_I and Picamera2 is None:
             hailo_logger.error(
                 "Input source 'rpi' requires Picamera2, but it is not installed in this environment."

@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 
 import yaml
 
@@ -17,7 +18,7 @@ from hailo_apps.python.core.common.installation_utils import detect_hailo_arch
 
 def get_source_type(input_source):
     # This function will return the source type based on the input source
-    # return values can be "file", "mipi", "usb", "rtsp", "udp"
+    # return values can be "file", "mipi", "usb", "rtsp", "udp", "wifilink"
     input_source = str(input_source)
     if input_source.startswith("/dev/video"):
         return "usb"
@@ -31,6 +32,8 @@ def get_source_type(input_source):
         return 'rtsp'
     elif input_source.startswith("udp://"):
         return "udp"
+    elif input_source.startswith("wifilink://"):
+        return "wifilink"
     else:
         return "file"
 
@@ -135,9 +138,31 @@ def SOURCE_PIPELINE(
             f'{QUEUE(name=f"{name}_queue_decode")} ! '
             f'decodebin name={name}_decodebin ! '
         )
-    elif source_type == "udp":  # UDP URI stream handling
+    elif source_type == "udp":  # UDP RTP/H264 stream handling
+        parsed_udp_uri = urlparse(video_source)
+        udp_host = parsed_udp_uri.hostname or "0.0.0.0"
+        udp_port = parsed_udp_uri.port or 5000
         source_element = (
-            f'uridecodebin uri="{video_source}" name={name}_uridecodebin ! '
+            f"udpsrc address={udp_host} port={udp_port} name={name}_udpsrc "
+            f'caps="application/x-rtp,media=video,encoding-name=H264,clock-rate=90000" ! '
+            f"{QUEUE(name=f'{name}_queue_jitter')} ! "
+            f"rtpjitterbuffer latency=100 ! "
+            f"{QUEUE(name=f'{name}_queue_depay')} ! "
+            f"rtph264depay ! h264parse ! "
+            f'decodebin name={name}_decodebin ! '
+        )
+    elif source_type == "wifilink":  # WiFiLink RTP/H265 stream handling
+        parsed_wifilink_uri = urlparse(video_source)
+        wifilink_host = parsed_wifilink_uri.hostname or "0.0.0.0"
+        wifilink_port = parsed_wifilink_uri.port or 5600
+        source_element = (
+            f"udpsrc address={wifilink_host} port={wifilink_port} name={name}_wifilink_src "
+            f'caps="application/x-rtp,media=video,encoding-name=H265,clock-rate=90000" ! '
+            f"{QUEUE(name=f'{name}_queue_jitter')} ! "
+            f"rtpjitterbuffer latency=100 ! "
+            f"{QUEUE(name=f'{name}_queue_depay')} ! "
+            f"rtph265depay ! h265parse ! "
+            f'decodebin name={name}_decodebin ! '
         )
     else:
         source_element = (
