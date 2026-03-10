@@ -205,6 +205,17 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
             "'rtsp-server' hosts an in-process RTSP server."
         ),
     )
+    parser.add_argument(
+        "--stream-codec",
+        type=str,
+        choices=["h264", "h265"],
+        default="h264",
+        help=(
+            "Video codec used for stream output encoding. "
+            "Use 'h264' (default) for wider client compatibility, "
+            "or 'h265' for better compression efficiency."
+        ),
+    )
 
     parser.add_argument(
         "--stream-host",
@@ -231,7 +242,7 @@ def get_pipeline_parser() -> argparse.ArgumentParser:
         type=int,
         default=2048,
         help=(
-            "Target H.264 encoder bitrate in kbps for stream output. "
+            "Target stream encoder bitrate in kbps for stream output. "
             "Higher values increase quality and bandwidth usage."
         ),
     )

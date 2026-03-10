@@ -381,6 +381,7 @@ class GStreamerApp:
         self.stream_output = getattr(self.options_menu, "stream_output", False)
         self.wifilink_hw_decode = getattr(self.options_menu, "wifilink_hw_decode", False)
         self.stream_protocol = getattr(self.options_menu, "stream_protocol", "udp")
+        self.stream_codec = getattr(self.options_menu, "stream_codec", "h264")
         self.stream_host = getattr(self.options_menu, "stream_host", "127.0.0.1")
         self.stream_port = getattr(self.options_menu, "stream_port", 5004)
         self.stream_bitrate = getattr(self.options_menu, "stream_bitrate", 2048)
@@ -410,11 +411,12 @@ class GStreamerApp:
                     else f"/{self.stream_path}"
                 )
                 hailo_logger.info(
-                    "In-process RTSP server mode enabled: rtsp://%s:%s%s bitrate=%skbps",
+                    "In-process RTSP server mode enabled: rtsp://%s:%s%s bitrate=%skbps codec=%s",
                     self.stream_host,
                     self.stream_port,
                     normalized_path,
                     self.stream_bitrate,
+                    self.stream_codec,
                 )
             elif self.stream_protocol == "rtsp":
                 normalized_path = (
@@ -423,18 +425,20 @@ class GStreamerApp:
                     else f"/{self.stream_path}"
                 )
                 hailo_logger.info(
-                    "RTSP push enabled: rtsp://%s:%s%s bitrate=%skbps",
+                    "RTSP push enabled: rtsp://%s:%s%s bitrate=%skbps codec=%s",
                     self.stream_host,
                     self.stream_port,
                     normalized_path,
                     self.stream_bitrate,
+                    self.stream_codec,
                 )
             else:
                 hailo_logger.info(
-                    "UDP streaming enabled: host=%s port=%s bitrate=%skbps",
+                    "UDP streaming enabled: host=%s port=%s bitrate=%skbps codec=%s",
                     self.stream_host,
                     self.stream_port,
                     self.stream_bitrate,
+                    self.stream_codec,
                 )
 
         # SOURCE_PIPELINE uses this toggle for wifilink:// decode path selection.
@@ -797,12 +801,22 @@ class GStreamerApp:
 
         factory = GstRtspServer.RTSPMediaFactory()
         factory.set_shared(True)
+        if self.stream_codec == "h264":
+            encoder_pipeline = (
+                f"videoconvert ! x264enc tune=zerolatency bitrate={self.stream_bitrate} speed-preset=ultrafast ! "
+                f"video/x-h264,profile=baseline ! h264parse config-interval=1 ! "
+                f"rtph264pay name=pay0 pt=96 config-interval=1"
+            )
+        else:
+            encoder_pipeline = (
+                f"videoconvert ! x265enc tune=zerolatency bitrate={self.stream_bitrate} speed-preset=ultrafast ! "
+                f"video/x-h265,profile=main ! h265parse config-interval=1 ! "
+                f"rtph265pay name=pay0 pt=96 config-interval=1"
+            )
         factory.set_launch(
             f"( shmsrc socket-path={socket_path} is-live=true do-timestamp=true ! "
             f"video/x-raw,format=RGB,width={self.video_width},height={self.video_height},framerate={self.frame_rate}/1 ! "
-            f"videoconvert ! x264enc tune=zerolatency bitrate={self.stream_bitrate} speed-preset=ultrafast ! "
-            f"video/x-h264,profile=baseline ! h264parse config-interval=1 ! "
-            f"rtph264pay name=pay0 pt=96 config-interval=1 )"
+            f"{encoder_pipeline} )"
         )
         self.rtsp_mounts.add_factory(mount_path, factory)
         self.rtsp_registered_streams[stream_index] = mount_path
@@ -868,7 +882,7 @@ class GStreamerApp:
             )
             stream_pipeline = (
                 f"{QUEUE(name=f'{name}_stream_q')} ! "
-                f"{RTSP_STREAM_PIPELINE(host=self.stream_host, port=port, path=self.stream_path, bitrate=self.stream_bitrate)}"
+                f"{RTSP_STREAM_PIPELINE(host=self.stream_host, port=port, path=self.stream_path, bitrate=self.stream_bitrate, codec=self.stream_codec)}"
             )
         else:
             hailo_logger.info(
@@ -879,7 +893,7 @@ class GStreamerApp:
             )
             stream_pipeline = (
                 f"{QUEUE(name=f'{name}_stream_q')} ! "
-                f"{VIDEO_STREAM_PIPELINE(port=port, host=self.stream_host, bitrate=self.stream_bitrate)}"
+                f"{VIDEO_STREAM_PIPELINE(port=port, host=self.stream_host, bitrate=self.stream_bitrate, codec=self.stream_codec)}"
             )
 
         if include_overlay:
